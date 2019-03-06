@@ -1,77 +1,104 @@
-const Crawler = require('crawler');
-const resultList = [];
+const htcap = require('htcrawl');
+const jsdom = require('jsdom');
+const { JSDOM } = jsdom;
+const _ = require('lodash');
 
-function RunCrawler(url) {
-    const c = new Crawler({
-        maxConnections : 10,
-        // This will be called for each crawled page
-        callback : function (error, res, done) {
-            if (error) {
-                console.log(error);
-            } else {
-                // console.log('res', res);
-                var $ = res.$;
-                // $ is Cheerio by default
-                //a lean implementation of core jQuery designed specifically for the server
+function getLinks(dom) {
+  const tags = dom.window.document.querySelectorAll('a');
 
-                const aList = $('a')
-                    .map(function() {
-                        // console.log('a', a);
-                        return {
-                            href: $(this).attr('href'),
-                            title: $(this).text()
-                        };
-                    })
-                    .get()
-                    .filter(link => link.href && link.href.toString().substr(0, url.length) === url);
+  if (!tags || !tags.length) {
+    return [];
+  }
 
-                if (aList.length) {
-                    aList.forEach(a => {
-                        resultList.push(a.href);
-                    });
-                }
+  console.log(tags.length);
 
-                console.log(res.options.uri, $('title').text(), aList.length);
-                console.log(resultList);
+  const links = [];
 
-                // aList.forEach(a => {
-                //     resultList.push(a.href);
-                // });
-            }
+  for (let i = 0; i < tags.length; i++) {
+    links.push(tags[i].href);
+  }
 
-            done();
-        }
-    });
-
-    // Queue just one URL, with default callback
-    // c.queue('http://www.amazon.com');
-    c.queue(url);
-
-    // Queue a list of URLs
-    // c.queue(['http://www.google.com/','http://www.yahoo.com', 'https://www.blog.wordpress.com']);
-
-    // Queue URLs with custom callbacks & parameters
-    // c.queue([{
-    //     uri: 'http://parishackers.org/',
-    //     jQuery: false,
-    //
-    //     // The global callback won't be called
-    //     callback: function (error, res, done) {
-    //         if(error){
-    //             console.log(error);
-    //         }else{
-    //             console.log('Grabbed', res.body.length, 'bytes');
-    //         }
-    //         done();
-    //     }
-    // }]);
-
-    // Queue some HTML code directly without grabbing (mostly for tests)
-    // c.queue([{
-    //     html: '<title>Test</title><p>This is a <strong>test</strong> <a href="test.html">test link</a></p>'
-    // }]);
+  return _.uniq(links).filter(link => link.substr(0, 1) === '/').map(link => ({
+    url: link,
+    isPassed: false
+  }));
 }
 
+async function crawl(url) {
+  const crawler = await htcap.launch(url, {maxExecTime: 3000});
+  await crawler.start();
+  await crawler.on('domcontentloaded');
 
+  const selector = 'body';
+  const html = await crawler.page().$eval(selector, node => node.innerHTML);
+  const dom = new JSDOM(html);
+  crawler.browser().close();
 
-RunCrawler('https://en.blog.wordpress.com');
+  return getLinks(dom);
+}
+
+async function runCrawler(host, url) {
+  console.log('[runCrawler]', host, url);
+
+  // if (!links || !links.length) {
+  //   return [];
+  // }
+
+  // crawler.on('xhr', e => {
+  //   console.log('XHR to ' + e.params.request.url);
+  // });
+
+  // crawler.on('domcontentloaded', async (e) => {
+  //   console.log('domcontentloaded');
+  //   const selector = 'body';
+  //   // const crwl = await domcontentloaded();
+  //   const html = await crawler.page().$eval(selector, node => node.innerHTML);
+  //   const dom = new JSDOM(html);
+  //   newLinks = getLinks(dom);
+  //   // crawler.browser().close();
+  // });
+
+  const newLinks = await crawl(`${host}${url}`);
+  const links = newLinks;
+
+  return links;
+
+  // if (newLinks.length) {
+  //
+  // }
+  //
+  //
+  //
+  // const diff = links.length ? _.difference(links, newLinks) : _.uniq(newLinks);
+  //
+  // console.log('[newLinks]', newLinks.length, diff.length);
+  //
+  // if (diff.length) {
+  //   return await runCrawler(host, diff[0]);
+  // }
+  //
+  // console.log('[started]', newLinks.length, links.length);
+  // crawler.browser().close();
+  //
+  // return links;
+}
+
+const host = 'https://weblocale.net';
+
+(async () => {
+  const links = await runCrawler(host, '/');
+
+  console.log('[links]', links.length);
+
+  for (let link of links) {
+    console.log('LINK to ' + link.url);
+  }
+})();
+
+// crawler.on('newdom', async function(e, crawler){
+//   console.log('newdom');
+//   const selector = e.params.rootNode;
+//   const html = await crawler.page().$eval(selector, node => node.innerHTML);
+//   const dom = new JSDOM(html);
+//   links = [...links, ...getLinks(dom)];
+// });
