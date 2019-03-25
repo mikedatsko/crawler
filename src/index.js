@@ -37,8 +37,14 @@ async function crawl(url) {
   return getLinks(dom);
 }
 
-async function runCrawler(host, url) {
+async function runCrawler(host, url, links) {
   console.log('[runCrawler]', host, url);
+
+  if (!links) {
+    links = [];
+  }
+
+  links.push(url);
 
   // if (!links || !links.length) {
   //   return [];
@@ -59,7 +65,10 @@ async function runCrawler(host, url) {
   // });
 
   const newLinks = await crawl(`${host}${url}`);
-  const links = newLinks;
+
+  const emptyLinks
+
+  links = newLinks;
 
   return links;
 
