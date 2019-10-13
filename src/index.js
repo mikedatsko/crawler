@@ -18,33 +18,44 @@ function getLinks(dom) {
     links.push(tags[i].href);
   }
 
-  return _.uniq(links).filter(link => link.substr(0, 1) === '/').map(link => ({
-    url: link,
-    isPassed: false
-  }));
+  return _.uniq(links).filter(link => link.substr(0, 1) === '/');
 }
 
 async function crawl(url) {
-  const crawler = await htcap.launch(url, {maxExecTime: 3000});
-  await crawler.start();
-  await crawler.on('domcontentloaded');
+  try {
+    const crawler = await htcap.launch(url, {maxExecTime: 3000});
+    await crawler.start();
+    await crawler.on('domcontentloaded');
 
-  const selector = 'body';
-  const html = await crawler.page().$eval(selector, node => node.innerHTML);
-  const dom = new JSDOM(html);
-  crawler.browser().close();
+    const selector = 'body';
+    const html = await crawler.page().$eval(selector, node => node.innerHTML);
+    const dom = new JSDOM(html);
+    crawler.browser().close();
 
-  return getLinks(dom);
+    return getLinks(dom);
+  } catch(error) {
+    console.log('error', error);
+    return [];
+  }
 }
 
-async function runCrawler(host, url, links) {
-  console.log('[runCrawler]', host, url);
-
+async function runCrawler(host, url, limit, links, resultLinks) {
   if (!links) {
     links = [];
   }
 
-  links.push(url);
+  if (!resultLinks) {
+    resultLinks = [];
+  }
+
+  resultLinks.push(url);
+
+  console.log('[runCrawler]', host, url, limit, links.length, resultLinks.length);
+
+  if (resultLinks.length === limit) {
+    console.log('Done', host, url, limit, links.length, resultLinks.length);
+    return resultLinks;
+  }
 
   // if (!links || !links.length) {
   //   return [];
@@ -64,13 +75,22 @@ async function runCrawler(host, url, links) {
   //   // crawler.browser().close();
   // });
 
-  const newLinks = await crawl(`${host}${url}`);
+  if (links.length + resultLinks.length >= limit) {
+    console.log('Limit', limit, links.length, resultLinks.length);
+    return runCrawler(host, links.shift(), limit, links, resultLinks);
+  }
 
-  const emptyLinks
+  const crawledLinks = await crawl(`${host}${url}`);
+  links = _.uniq([...links, ...crawledLinks]).filter(cl => !resultLinks.includes(cl));
 
-  links = newLinks;
+  if (links.length) {
+    console.log('New links', limit, links.length, resultLinks.length);
+    return runCrawler(host, links.shift(), limit, links, resultLinks);
+  }
 
-  return links;
+  // const emptyLinks =
+
+  return resultLinks;
 
   // if (newLinks.length) {
   //
@@ -92,16 +112,33 @@ async function runCrawler(host, url, links) {
   // return links;
 }
 
-const host = 'https://weblocale.net';
+function formatDuration(sourceDuration) {
+  const value = Math.floor(sourceDuration / 1000);
+  const hours = Math.floor(value / 3600);
+  const minutes = Math.floor((value - hours * 3600) / 60);
+  const seconds = value - hours * 3600 - minutes * 60;
+  const duration = [hours, minutes, seconds];
+
+  if (duration[0] === 0) {
+    duration.shift();
+  }
+
+  return duration.map(d => `0${d}`.substr(-2)).join(':');
+}
+
+const host = 'https://github.com';
 
 (async () => {
-  const links = await runCrawler(host, '/');
+  const startTime = new Date().getTime();
+  const links = await runCrawler(host, '/', 100);
 
   console.log('[links]', links.length);
 
   for (let link of links) {
-    console.log('LINK to ' + link.url);
+    console.log('LINK to ' + link);
   }
+
+  console.log('Execution time:', formatDuration(new Date().getTime() - startTime));
 })();
 
 // crawler.on('newdom', async function(e, crawler){
